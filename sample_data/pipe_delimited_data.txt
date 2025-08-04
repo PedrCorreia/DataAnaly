@@ -1,0 +1,11 @@
+Date|Product|Category|Sales|Units|Revenue|Region
+2024-01-01|Widget A|Electronics|150|10|1500|North
+2024-01-02|Widget B|Electronics|200|15|3000|South
+2024-01-03|Gadget X|Home|120|8|960|East
+2024-01-04|Widget A|Electronics|180|12|2160|West
+2024-01-05|Tool Y|Tools|90|6|540|North
+2024-01-06|Gadget X|Home|140|9|1260|South
+2024-01-07|Widget B|Electronics|220|16|3520|East
+2024-01-08|Tool Z|Tools|110|7|770|West
+2024-01-09|Widget A|Electronics|160|11|1760|North
+2024-01-10|Gadget Y|Home|130|8|1040|South
