@@ -8,11 +8,9 @@ previewing their contents with metadata information.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, 
     QTableWidgetItem, QLabel, QGroupBox, QFileDialog, QMessageBox,
-    QProgressBar, QTextEdit, QSplitter, QFrame, QGridLayout, QComboBox,
-    QCheckBox, QInputDialog
+    QProgressBar, QTextEdit, QSplitter, QGridLayout, QComboBox,
 )
-from PySide6.QtCore import Qt, Signal, QThread
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal
 import pandas as pd
 from pathlib import Path
 from ..dialogs.import_settings_dialog import ImportSettingsDialog
@@ -37,6 +35,8 @@ class DataImportTab(QWidget):
         
         # Import section
         import_group = QGroupBox("Data Import")
+        import_group.setMinimumHeight(90)   
+        import_group.setMaximumHeight(100)   
         import_layout = QVBoxLayout(import_group)
         
         # File selection row
@@ -64,14 +64,21 @@ class DataImportTab(QWidget):
         preset_label = QLabel("Quick Preset:")
         self.preset_combo = QComboBox()
         self.preset_combo.addItems([
-            "Auto-detect", "Default CSV", "European CSV (;)", 
+            "Default CSV", "European CSV (;)", 
             "Tab Separated", "Pipe Delimited", "Excel", "Custom"
         ])
         self.preset_combo.currentTextChanged.connect(self.preset_changed)
         
+        # Reload button for dynamic switching
+        self.reload_button = QPushButton("🔄 Reload")
+        self.reload_button.setMinimumHeight(30)
+        self.reload_button.clicked.connect(self.reload_with_current_preset)
+        self.reload_button.setEnabled(False)
+        
         info_row.addWidget(self.file_path_label, 1)
         info_row.addWidget(preset_label)
         info_row.addWidget(self.preset_combo)
+        info_row.addWidget(self.reload_button)
         
         import_layout.addLayout(file_row)
         import_layout.addLayout(info_row)
@@ -185,20 +192,19 @@ class DataImportTab(QWidget):
                 if file_ext == '.csv':
                     success = self.data_manager.load_csv(file_path, **load_settings)
                 elif file_ext in ['.txt', '.tsv']:
-                    success = self.data_manager.load_text_file(file_path, **load_settings)
+                    # For text files, use the separator from settings
+                    separator = load_settings.get('sep', '\t')
+                    success = self.data_manager.load_text_file(file_path, separator=separator, **{k:v for k,v in load_settings.items() if k != 'sep'})
                 elif file_ext in ['.xlsx', '.xls']:
                     success = self.data_manager.load_excel(file_path, **load_settings)
                 else:
-                    # Try to auto-detect format
-                    if self.try_auto_detect(file_path, load_settings):
-                        success = True
-                    else:
-                        QMessageBox.warning(self, "Unsupported Format", 
-                                          f"File format {file_ext} is not supported.")
+                    # For unknown extensions, try as CSV with current settings
+                    success = self.data_manager.load_csv(file_path, **load_settings)
                     
                 if success:
                     self.file_path_label.setText(f"Loaded: {Path(file_path).name}")
                     self.file_path_label.setStyleSheet("color: #4CAF50; font-weight: bold;")
+                    self.reload_button.setEnabled(True)
                     self.update_preview()
                     self.data_loaded.emit()
                 else:
@@ -210,30 +216,12 @@ class DataImportTab(QWidget):
             finally:
                 self.progress_bar.setVisible(False)
                 
-    def try_auto_detect(self, file_path, base_settings):
-        """Try to auto-detect file format and load."""
-        # Try common separators
-        separators = [',', ';', '\t', '|']
-        
-        for sep in separators:
-            try:
-                settings = base_settings.copy()
-                settings['sep'] = sep
-                if self.data_manager.load_csv(file_path, **settings):
-                    return True
-            except:
-                continue
-                
-        return False
-        
     def get_current_settings(self, file_ext):
         """Get current import settings based on preset and file type."""
         preset = self.preset_combo.currentText()
         
         # Base settings from preset
-        if preset == "Auto-detect":
-            settings = {}
-        elif preset == "Default CSV":
+        if preset == "Default CSV":
             settings = {"sep": ",", "encoding": "utf-8"}
         elif preset == "European CSV (;)":
             settings = {"sep": ";", "encoding": "utf-8", "decimal": ","}
@@ -243,7 +231,7 @@ class DataImportTab(QWidget):
             settings = {"sep": "|", "encoding": "utf-8"}
         elif preset == "Excel":
             settings = {"sheet_name": 0}
-        else:
+        else:  # Custom
             settings = {}
             
         # Override with custom settings if available
@@ -251,6 +239,39 @@ class DataImportTab(QWidget):
             settings.update(self.custom_settings)
             
         return settings
+        
+    def reload_with_current_preset(self):
+        """Reload the current file with the selected preset."""
+        if hasattr(self, 'last_file_path') and self.last_file_path:
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setRange(0, 0)
+            
+            file_ext = Path(self.last_file_path).suffix.lower()
+            load_settings = self.get_current_settings(file_ext)
+            
+            success = False
+            try:
+                if file_ext == '.csv':
+                    success = self.data_manager.load_csv(self.last_file_path, **load_settings)
+                elif file_ext in ['.txt', '.tsv']:
+                    separator = load_settings.get('sep', '\t')
+                    success = self.data_manager.load_text_file(self.last_file_path, separator=separator, **{k:v for k,v in load_settings.items() if k != 'sep'})
+                elif file_ext in ['.xlsx', '.xls']:
+                    success = self.data_manager.load_excel(self.last_file_path, **load_settings)
+                else:
+                    success = self.data_manager.load_csv(self.last_file_path, **load_settings)
+                    
+                if success:
+                    self.update_preview()
+                    self.data_loaded.emit()
+                else:
+                    QMessageBox.critical(self, "Error", "Failed to reload the data file.")
+                    
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error reloading file: {str(e)}")
+                
+            finally:
+                self.progress_bar.setVisible(False)
         
     def show_advanced_settings(self):
         """Show the advanced import settings dialog."""
@@ -279,6 +300,9 @@ class DataImportTab(QWidget):
         """Handle preset change."""
         if preset_name != "Custom":
             self.custom_settings = {}
+            # Auto-reload if we have a file loaded
+            if hasattr(self, 'last_file_path') and self.last_file_path and self.reload_button.isEnabled():
+                self.reload_with_current_preset()
                 
     def update_preview(self):
         """Update the data preview and metadata."""

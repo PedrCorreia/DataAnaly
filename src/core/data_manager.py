@@ -74,6 +74,10 @@ class DataManager:
             True if successful, False otherwise
         """
         try:
+            # Remove 'sep' from kwargs if it exists to avoid conflict
+            if 'sep' in kwargs:
+                del kwargs['sep']
+            
             self.data = pd.read_csv(file_path, sep=separator, **kwargs)
             self.file_path = Path(file_path)
             self._update_metadata()
@@ -85,6 +89,10 @@ class DataManager:
     def get_data(self) -> Optional[pd.DataFrame]:
         """Get the current dataset."""
         return self.data
+        
+    def has_data(self) -> bool:
+        """Check if data is currently loaded."""
+        return self.data is not None and not self.data.empty
         
     def get_columns(self) -> List[str]:
         """Get list of column names."""

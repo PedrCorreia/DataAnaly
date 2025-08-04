@@ -1,9 +1,5 @@
 """
-Main Windfrom tabs.data_import_tab import DataImportTab
-from tabs.plotting_tab import PlottingTab
-from tabs.stats_tab import StatisticsTab
-from tabs.signal_processing_tab import SignalProcessingTab
-from core.data_manager import DataManagerr the Data Analysis GUI Application
+Main Window for the Data Analysis GUI Application
 
 This module contains the main window class that orchestrates all tabs
 and provides the overall application structure.
@@ -11,7 +7,7 @@ and provides the overall application structure.
 
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QVBoxLayout, QWidget, 
-    QMenuBar, QStatusBar, QMessageBox, QSplashScreen
+    QMenuBar, QStatusBar, QMessageBox, QSplashScreen, QApplication
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QIcon, QPixmap
@@ -20,7 +16,7 @@ from .tabs.data_import_tab import DataImportTab
 from .tabs.plotting_tab import PlottingTab
 from .tabs.statistics_tab import StatisticsTab
 from .tabs.signal_processing_tab import SignalProcessingTab
-from core.data_manager import DataManager
+from ..core.data_manager import DataManager
 
 
 class MainWindow(QMainWindow):
@@ -66,6 +62,9 @@ class MainWindow(QMainWindow):
         # Connect data updates
         self.data_import_tab.data_loaded.connect(self.on_data_loaded)
         
+        # Connect statistics tab data creation
+        self.statistics_tab.data_created.connect(self.on_data_created)
+        
         layout.addWidget(self.tab_widget)
         
     def setup_menu(self):
@@ -95,13 +94,20 @@ class MainWindow(QMainWindow):
         # View menu
         view_menu = menubar.addMenu("&View")
         
-        theme_action = QAction("Toggle &Theme", self)
-        theme_action.setShortcut("Ctrl+T")
-        theme_action.triggered.connect(self.toggle_theme)
-        view_menu.addAction(theme_action)
-        
         # Help menu
         help_menu = menubar.addMenu("&Help")
+        
+        user_guide_action = QAction("&User Guide", self)
+        user_guide_action.setShortcut("F1")
+        user_guide_action.triggered.connect(self.show_user_guide)
+        help_menu.addAction(user_guide_action)
+        
+        shortcuts_action = QAction("Keyboard &Shortcuts", self)
+        shortcuts_action.setShortcut("Ctrl+?")
+        shortcuts_action.triggered.connect(self.show_shortcuts)
+        help_menu.addAction(shortcuts_action)
+        
+        help_menu.addSeparator()
         
         about_action = QAction("&About", self)
         about_action.triggered.connect(self.show_about)
@@ -126,6 +132,26 @@ class MainWindow(QMainWindow):
         self.statistics_tab.update_column_lists()
         self.signal_processing_tab.update_column_lists()
         
+    def on_data_created(self, name, dataframe):
+        """Handle creation of new data from statistics/signal processing."""
+        try:
+            # Add to data manager if it supports multiple datasets
+            if hasattr(self.data_manager, 'add_dataset'):
+                self.data_manager.add_dataset(name, dataframe)
+            else:
+                # For now, replace current data with the new generated data
+                self.data_manager.set_data(dataframe)
+                
+            self.status_bar.showMessage(f"New dataset created: {name}", 3000)
+            
+            # Update all tabs
+            self.plotting_tab.update_column_lists()
+            self.statistics_tab.update_column_lists()
+            self.signal_processing_tab.update_column_lists()
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Warning", f"Could not add dataset: {str(e)}")
+        
     def new_project(self):
         """Create a new project."""
         self.data_manager.clear_data()
@@ -134,24 +160,159 @@ class MainWindow(QMainWindow):
         self.signal_processing_tab.setEnabled(False)
         self.status_bar.showMessage("New project created", 2000)
         
-    def toggle_theme(self):
-        """Toggle between light and dark themes."""
-        # This would cycle through themes
-        self.status_bar.showMessage("Theme toggled", 2000)
-        
     def show_about(self):
-        """Show about dialog."""
-        QMessageBox.about(
-            self,
-            "About Data Analysis Pro",
-            "<h3>Data Analysis Pro v1.0.0</h3>"
-            "<p>A comprehensive data analysis and visualization tool.</p>"
-            "<p>Features:</p>"
-            "<ul>"
-            "<li>Data Import & Preview</li>"
-            "<li>Interactive Plotting</li>"
-            "<li>Statistical Analysis</li>"
-            "<li>Signal Processing</li>"
-            "</ul>"
-            "<p>Built with PySide6 and Python.</p>"
-        )
+        """Show enhanced about dialog."""
+        about_text = """
+        <div style='text-align: center;'>
+        <h2>🚀 Data Analysis Pro</h2>
+        <p><b>Version:</b> 1.0.0</p>
+        <p><b>Build Date:</b> August 2025</p>
+        </div>
+        
+        <h3>📊 Professional Data Analysis & Visualization</h3>
+        <p>A comprehensive, modern data analysis application built with PySide6.</p>
+        
+        <h4>✨ Key Features:</h4>
+        <ul>
+        <li><b>📈 Data Import & Preview</b> - Load CSV, Excel, and text files with intelligent detection</li>
+        <li><b>🎨 Interactive Plotting</b> - Professional charts with scientific formatting and export</li>
+        <li><b>📋 Statistical Analysis</b> - Descriptive stats, hypothesis testing, and correlations</li>
+        <li><b>🔬 Signal Processing</b> - Digital filtering, FFT analysis, and frequency domain plots</li>
+        </ul>
+        
+        <h4>🛠️ Technical Stack:</h4>
+        <p><b>GUI Framework:</b> PySide6 (Qt for Python)<br>
+        <b>Data Processing:</b> Pandas, NumPy<br>
+        <b>Visualization:</b> Matplotlib, Seaborn<br>
+        <b>Signal Processing:</b> SciPy<br>
+        <b>Language:</b> Python 3.10+</p>
+        
+        <h4>💡 Why PySide6?</h4>
+        <p>Unlike tkinter, PySide6 provides:</p>
+        <ul>
+        <li>Native OS look and feel</li>
+        <li>Professional styling and theming</li>
+        <li>High DPI display support</li>
+        <li>Better performance with large datasets</li>
+        <li>Advanced widgets and layouts</li>
+        </ul>
+        
+        <p style='text-align: center; margin-top: 20px;'>
+        <b>Built for data scientists, by data scientists</b><br>
+        <small>© 2025 Data Analysis Pro</small>
+        </p>
+        """
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("About Data Analysis Pro")
+        msg_box.setText(about_text)
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.exec()
+        
+    def show_user_guide(self):
+        """Show user guide dialog."""
+        guide_text = """
+        <h2>📖 Quick Start Guide</h2>
+        
+        <h3>🚀 Getting Started</h3>
+        <ol>
+        <li><b>Import Data:</b> Use the "📊 Data Import & Preview" tab to load your data files</li>
+        <li><b>Explore:</b> Review the data preview and metadata</li>
+        <li><b>Visualize:</b> Switch to "📈 Plotting" tab for interactive charts</li>
+        <li><b>Analyze:</b> Use "📋 Statistical Analysis" for descriptive stats and tests</li>
+        <li><b>Process:</b> Apply signal processing in the "🔬 Signal Processing" tab</li>
+        </ol>
+        
+        <h3>📂 Data Import Features</h3>
+        <ul>
+        <li><b>Quick Presets:</b> Default CSV, European CSV, Tab/Pipe delimited, Excel</li>
+        <li><b>Advanced Settings:</b> Custom separators, encoding, headers, etc.</li>
+        <li><b>File Types:</b> CSV, TXT, TSV, XLS, XLSX</li>
+        <li><b>Dynamic Reload:</b> Switch presets and reload instantly</li>
+        </ul>
+        
+        <h3>📈 Plotting Capabilities</h3>
+        <ul>
+        <li><b>Plot Types:</b> Line, Scatter, Bar, Histogram, Box, Violin, Heatmap, Pair plots</li>
+        <li><b>Customization:</b> Colors, styles, fonts, transparency, scientific notation</li>
+        <li><b>Export Formats:</b> PNG, PDF, SVG, JPG, LaTeX (TikZ)</li>
+        <li><b>Interactive:</b> Real-time preview with zoom, pan, and navigation</li>
+        </ul>
+        
+        <h3>⌨️ Keyboard Shortcuts</h3>
+        <ul>
+        <li><b>Ctrl+N:</b> New Project</li>
+        <li><b>Ctrl+O:</b> Open Data File</li>
+        <li><b>Ctrl+Q:</b> Exit Application</li>
+        <li><b>F1:</b> Show User Guide</li>
+        <li><b>Ctrl+?:</b> Show Keyboard Shortcuts</li>
+        </ul>
+        
+        <h3>💡 Pro Tips</h3>
+        <ul>
+        <li>Use the reload button (🔄) to quickly test different import presets</li>
+        <li>Adjust DPI settings in plotting for publication-quality exports</li>
+        <li>Use scientific notation and log scales for research data</li>
+        <li>Save custom color palettes for consistent styling</li>
+        </ul>
+        """
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("User Guide - Data Analysis Pro")
+        msg_box.setText(guide_text)
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.exec()
+        
+    def show_shortcuts(self):
+        """Show keyboard shortcuts dialog."""
+        shortcuts_text = """
+        <h2>⌨️ Keyboard Shortcuts</h2>
+        
+        <h3>🗂️ File Operations</h3>
+        <table style='width: 100%;'>
+        <tr><td><b>Ctrl+N</b></td><td>New Project</td></tr>
+        <tr><td><b>Ctrl+O</b></td><td>Open Data File</td></tr>
+        <tr><td><b>Ctrl+S</b></td><td>Save Project</td></tr>
+        <tr><td><b>Ctrl+Q</b></td><td>Exit Application</td></tr>
+        </table>
+        
+        <h3>🎨 View & Interface</h3>
+        <table style='width: 100%;'>
+        <tr><td><b>Ctrl+1</b></td><td>Switch to Data Import Tab</td></tr>
+        <tr><td><b>Ctrl+2</b></td><td>Switch to Plotting Tab</td></tr>
+        <tr><td><b>Ctrl+3</b></td><td>Switch to Statistics Tab</td></tr>
+        <tr><td><b>Ctrl+4</b></td><td>Switch to Signal Processing Tab</td></tr>
+        </table>
+        
+        <h3>📈 Plotting</h3>
+        <table style='width: 100%;'>
+        <tr><td><b>Ctrl+E</b></td><td>Export Current Plot</td></tr>
+        <tr><td><b>Ctrl+C</b></td><td>Copy Plot to Clipboard</td></tr>
+        <tr><td><b>Ctrl+R</b></td><td>Reset Plot View</td></tr>
+        </table>
+        
+        <h3>❓ Help & Information</h3>
+        <table style='width: 100%;'>
+        <tr><td><b>F1</b></td><td>Show User Guide</td></tr>
+        <tr><td><b>Ctrl+?</b></td><td>Show Keyboard Shortcuts</td></tr>
+        <tr><td><b>Ctrl+I</b></td><td>Show About Dialog</td></tr>
+        </table>
+        
+        <h3>🔧 Data Operations</h3>
+        <table style='width: 100%;'>
+        <tr><td><b>F5</b></td><td>Refresh/Reload Data</td></tr>
+        <tr><td><b>Ctrl+F</b></td><td>Find in Data</td></tr>
+        <tr><td><b>Ctrl+D</b></td><td>Show Data Info</td></tr>
+        </table>
+        
+        <p style='margin-top: 20px;'><i>Note: Some shortcuts may vary based on the active tab and context.</i></p>
+        """
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Keyboard Shortcuts - Data Analysis Pro")
+        msg_box.setText(shortcuts_text)
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.exec()
