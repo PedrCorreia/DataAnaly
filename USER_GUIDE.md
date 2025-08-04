@@ -10,13 +10,12 @@
 ### Quick Presets
 The application includes several quick presets for common data formats:
 
-1. **Auto-detect** - Automatically detects the file format and separator
-2. **Default CSV** - Standard comma-separated values with UTF-8 encoding
-3. **European CSV (;)** - Semicolon-separated with comma as decimal separator
-4. **Tab Separated** - Tab-delimited text files
-5. **Pipe Delimited** - Pipe (|) separated values
-6. **Excel** - Standard Excel file import
-7. **Custom** - User-defined advanced settings
+1. **Default CSV** - Standard comma-separated values with UTF-8 encoding
+2. **European CSV (;)** - Semicolon-separated with comma as decimal separator
+3. **Tab Separated** - Tab-delimited text files
+4. **Pipe Delimited** - Pipe (|) separated values
+5. **Excel** - Standard Excel file import
+6. **Custom** - User-defined advanced settings
 
 ### Advanced Settings
 Click the "⚙️ Advanced Settings" button to access detailed import options:
@@ -97,8 +96,37 @@ The application includes sample data files in the `sample_data/` folder:
 - **Dark/Light theme support** (system-aware)
 - **Tabbed interface** for different analysis functions
 - **Status bar** with loading progress and messages
-- **Menu system** with keyboard shortcuts
+- **Comprehensive menu system** with keyboard shortcuts
+- **Help system** with User Guide, Shortcuts, and About dialogs
 - **Responsive layout** that adapts to window resizing
+
+### Help & Support Features
+
+#### Help Menu (accessible from menu bar):
+1. **User Guide (F1)** - Comprehensive quick-start guide with:
+   - Getting started steps
+   - Data import features overview
+   - Plotting capabilities
+   - Keyboard shortcuts
+   - Pro tips for advanced usage
+
+2. **Keyboard Shortcuts (Ctrl+?)** - Complete list of shortcuts including:
+   - File operations (Ctrl+N, Ctrl+O, Ctrl+Q)
+   - View controls (Ctrl+T for theme toggle)
+   - Tab navigation (Ctrl+1-4)
+   - Plotting shortcuts (Ctrl+E for export)
+   - Help shortcuts (F1, Ctrl+?)
+
+3. **About Dialog** - Detailed application information:
+   - Version and build information
+   - Feature overview with descriptions
+   - Technical stack details
+   - Professional UI advantages over tkinter
+
+#### Menu System:
+- **File Menu**: New Project, Open Data, Exit
+- **View Menu**: Toggle Theme, Tab navigation
+- **Help Menu**: User Guide, Shortcuts, About
 
 This professional interface provides a much better user experience compared to tkinter, with:
 - Native OS integration
