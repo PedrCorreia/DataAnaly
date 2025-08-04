@@ -20,6 +20,10 @@ class DataManager:
         self.metadata: Dict[str, Any] = {}
         self.file_path: Optional[Path] = None
         
+        # Support for multiple datasets
+        self.datasets: Dict[str, pd.DataFrame] = {}
+        self.current_dataset: Optional[str] = None
+        
     def load_csv(self, file_path: str, **kwargs) -> bool:
         """
         Load data from a CSV file.
@@ -116,11 +120,87 @@ class DataManager:
         """Get dataset metadata."""
         return self.metadata.copy()
         
+    def set_data(self, data: pd.DataFrame, name: Optional[str] = None):
+        """
+        Set new data in the manager.
+        
+        Args:
+            data: DataFrame to set as current data
+            name: Optional name for the dataset
+        """
+        self.data = data.copy()
+        self.file_path = None  # No file path for programmatically set data
+        self._update_metadata()
+        if name:
+            self.metadata['name'] = name
+    
+    def add_data_column(self, column_name: str, data: pd.Series):
+        """
+        Add a new column to existing data.
+        
+        Args:
+            column_name: Name of the new column
+            data: Series data for the new column
+        """
+        if self.data is not None:
+            self.data[column_name] = data
+            self._update_metadata()
+        else:
+            # Create new DataFrame if no data exists
+            self.data = pd.DataFrame({column_name: data})
+            self._update_metadata()
+        
     def clear_data(self):
         """Clear all data and reset the manager."""
         self.data = None
         self.metadata = {}
         self.file_path = None
+        self.datasets = {}
+        self.current_dataset = None
+    
+    def add_dataset(self, name: str, data: pd.DataFrame):
+        """
+        Add a new dataset to the collection.
+        
+        Args:
+            name: Name for the dataset
+            data: DataFrame to add
+        """
+        self.datasets[name] = data.copy()
+        # Don't change the current main dataset
+        
+    def get_dataset(self, name: str) -> Optional[pd.DataFrame]:
+        """
+        Get a specific dataset by name.
+        
+        Args:
+            name: Name of the dataset
+            
+        Returns:
+            DataFrame if found, None otherwise
+        """
+        return self.datasets.get(name)
+    
+    def list_datasets(self) -> List[str]:
+        """Get list of all available dataset names."""
+        return list(self.datasets.keys())
+    
+    def switch_to_dataset(self, name: str) -> bool:
+        """
+        Switch the main data to a specific dataset.
+        
+        Args:
+            name: Name of the dataset to switch to
+            
+        Returns:
+            True if successful, False if dataset not found
+        """
+        if name in self.datasets:
+            self.data = self.datasets[name].copy()
+            self.current_dataset = name
+            self._update_metadata()
+            return True
+        return False
         
     def _update_metadata(self):
         """Update metadata based on current data."""

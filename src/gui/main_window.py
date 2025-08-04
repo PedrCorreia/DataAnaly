@@ -7,7 +7,8 @@ and provides the overall application structure.
 
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QVBoxLayout, QWidget, 
-    QMenuBar, QStatusBar, QMessageBox, QSplashScreen, QApplication
+    QMenuBar, QStatusBar, QMessageBox, QSplashScreen, QApplication,
+    QDialog, QLabel, QListWidget, QListWidgetItem, QHBoxLayout, QPushButton
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QIcon, QPixmap
@@ -86,6 +87,14 @@ class MainWindow(QMainWindow):
         
         file_menu.addSeparator()
         
+        # Dataset management
+        switch_dataset_action = QAction("&Switch Dataset...", self)
+        switch_dataset_action.setShortcut("Ctrl+Shift+S")
+        switch_dataset_action.triggered.connect(self.switch_dataset_dialog)
+        file_menu.addAction(switch_dataset_action)
+        
+        file_menu.addSeparator()
+        
         exit_action = QAction("E&xit", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
@@ -135,19 +144,15 @@ class MainWindow(QMainWindow):
     def on_data_created(self, name, dataframe):
         """Handle creation of new data from statistics/signal processing."""
         try:
-            # Add to data manager if it supports multiple datasets
-            if hasattr(self.data_manager, 'add_dataset'):
-                self.data_manager.add_dataset(name, dataframe)
-            else:
-                # For now, replace current data with the new generated data
-                self.data_manager.set_data(dataframe)
-                
-            self.status_bar.showMessage(f"New dataset created: {name}", 3000)
+            # Add the new dataset to the collection without replacing the main data
+            self.data_manager.add_dataset(name, dataframe)
             
-            # Update all tabs
-            self.plotting_tab.update_column_lists()
-            self.statistics_tab.update_column_lists()
-            self.signal_processing_tab.update_column_lists()
+            self.status_bar.showMessage(f"New dataset created: {name} (original data preserved)", 3000)
+            
+            # Show information about the new dataset
+            QMessageBox.information(self, "Dataset Created", 
+                f"New dataset '{name}' has been created with {len(dataframe)} rows and {len(dataframe.columns)} columns.\n\n"
+                f"The original data remains active. Use File > Switch Dataset to view the new dataset.")
             
         except Exception as e:
             QMessageBox.warning(self, "Warning", f"Could not add dataset: {str(e)}")
@@ -159,6 +164,93 @@ class MainWindow(QMainWindow):
         self.statistics_tab.setEnabled(False)
         self.signal_processing_tab.setEnabled(False)
         self.status_bar.showMessage("New project created", 2000)
+    
+    def switch_dataset_dialog(self):
+        """Show dialog to switch between available datasets."""
+        datasets = self.data_manager.list_datasets()
+        
+        if not datasets:
+            QMessageBox.information(self, "No Datasets", 
+                "No additional datasets available. Create datasets using Statistics or Signal Processing tabs.")
+            return
+        
+        # Add the original dataset option
+        current_data_name = "Original Data"
+        all_options = [current_data_name] + datasets
+        
+        # Create dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Switch Dataset")
+        dialog.setModal(True)
+        layout = QVBoxLayout(dialog)
+        
+        # Instructions
+        label = QLabel("Select a dataset to view:")
+        layout.addWidget(label)
+        
+        # Dataset list
+        dataset_list = QListWidget()
+        for option in all_options:
+            item = QListWidgetItem(option)
+            if option == current_data_name:
+                item.setText(f"{option} (Current)")
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+            dataset_list.addItem(item)
+        layout.addWidget(dataset_list)
+        
+        # Info label
+        info_label = QLabel("Click a dataset to see details")
+        layout.addWidget(info_label)
+        
+        # Update info when selection changes
+        def update_info():
+            current_item = dataset_list.currentItem()
+            if current_item:
+                dataset_name = current_item.text().replace(" (Current)", "")
+                if dataset_name == current_data_name:
+                    data = self.data_manager.get_data()
+                else:
+                    data = self.data_manager.get_dataset(dataset_name)
+                
+                if data is not None:
+                    info_text = f"Rows: {len(data)}, Columns: {len(data.columns)}"
+                    info_label.setText(info_text)
+        
+        dataset_list.currentItemChanged.connect(update_info)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        switch_btn = QPushButton("Switch")
+        switch_btn.clicked.connect(dialog.accept)
+        
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(switch_btn)
+        layout.addLayout(button_layout)
+        
+        # Show dialog
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            current_item = dataset_list.currentItem()
+            if current_item:
+                selected_name = current_item.text().replace(" (Current)", "")
+                
+                if selected_name != current_data_name:
+                    # Switch to selected dataset
+                    if self.data_manager.switch_to_dataset(selected_name):
+                        self.status_bar.showMessage(f"Switched to dataset: {selected_name}", 3000)
+                        
+                        # Update all tabs
+                        self.plotting_tab.update_column_lists()
+                        self.statistics_tab.update_column_lists()
+                        self.signal_processing_tab.update_column_lists()
+                    else:
+                        QMessageBox.warning(self, "Error", f"Could not switch to dataset: {selected_name}")
+                else:
+                    # User selected original data - no action needed
+                    pass
         
     def show_about(self):
         """Show enhanced about dialog."""

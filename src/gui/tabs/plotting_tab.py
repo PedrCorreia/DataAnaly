@@ -632,14 +632,14 @@ class PlottingTab(QWidget):
         """)
         
         # Create matplotlib figure and canvas
-        self.figure = Figure(figsize=(10, 10), dpi=100, facecolor="#FFFFFF")
+        self.figure = Figure(figsize=(10, 10), dpi=100, facecolor="#555555")
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setParent(widget)
         #f8f8f8
         # Set canvas background to show plot area clearly
         self.canvas.setStyleSheet("""
             FigureCanvas {
-                background-color: f8f8f8;
+                background-color: #f8f8f8;
                 border: 2px solid #cccccc;
                 border-radius: 4px;
                 margin: 5px;
