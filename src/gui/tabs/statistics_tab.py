@@ -370,22 +370,30 @@ class StatisticsTab(QWidget):
         
     def create_export_group(self):
         """Create export and save controls."""
-        group = QGroupBox("💾 Export & Save")
+        group = QGroupBox("💾 Export & Integration")
         layout = QVBoxLayout(group)
+        
+        # Add info label
+        info_label = QLabel("Generated datasets can be saved or integrated:")
+        info_label.setStyleSheet("font-size: 9px; color: #666;")
+        layout.addWidget(info_label)
         
         # Save generated data
         self.save_data_btn = QPushButton("💾 Save Generated Data")
         self.save_data_btn.clicked.connect(self.save_generated_data)
+        self.save_data_btn.setToolTip("Save selected dataset to file")
         layout.addWidget(self.save_data_btn)
         
         # Export results
         self.export_results_btn = QPushButton("📄 Export Analysis Results")
         self.export_results_btn.clicked.connect(self.export_analysis_results)
+        self.export_results_btn.setToolTip("Export analysis reports and summaries")
         layout.addWidget(self.export_results_btn)
         
         # Add to main dataset
-        self.add_to_main_btn = QPushButton("➕ Add to Main Dataset")
+        self.add_to_main_btn = QPushButton("🔗 Integrate with Main Data")
         self.add_to_main_btn.clicked.connect(self.add_to_main_dataset)
+        self.add_to_main_btn.setToolTip("Smart integration with sample ID alignment")
         layout.addWidget(self.add_to_main_btn)
         
         return group
@@ -628,15 +636,27 @@ class StatisticsTab(QWidget):
             return
             
         data = self.data_manager.get_data()
+        
+        # Ensure data has sample_id column for proper tracking
+        if 'sample_id' not in data.columns:
+            data_with_id = data.copy()
+            data_with_id['sample_id'] = range(len(data))
+            self.data_manager.set_data(data_with_id, "Main Data with Sample IDs")
+            data = data_with_id  # Use the updated data for the rest of the method
+        
         columns = list(data.columns)
         numeric_columns = list(data.select_dtypes(include=[np.number]).columns)
         
+        # Filter out sample_id from analysis columns
+        analysis_columns = [col for col in columns if col != 'sample_id']
+        analysis_numeric_columns = [col for col in numeric_columns if col != 'sample_id']
+        
         # Update various column selectors
         self.columns_list.clear()
-        for col in columns:
+        for col in analysis_columns:
             item = QListWidgetItem(col)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked if col in numeric_columns[:3] else Qt.CheckState.Unchecked)
+            item.setCheckState(Qt.CheckState.Checked if col in analysis_numeric_columns[:3] else Qt.CheckState.Unchecked)
             self.columns_list.addItem(item)
             
         # Update combo boxes
@@ -644,11 +664,11 @@ class StatisticsTab(QWidget):
             combo.clear()
             if combo == self.groupby_combo:
                 combo.addItem("None")
-            combo.addItems(numeric_columns if combo != self.groupby_combo else columns)
+            combo.addItems(analysis_numeric_columns if combo != self.groupby_combo else analysis_columns)
             
         # Update transform columns list
         self.transform_columns_list.clear()
-        for col in numeric_columns:
+        for col in analysis_numeric_columns:
             item = QListWidgetItem(col)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Unchecked)
@@ -732,8 +752,11 @@ class StatisticsTab(QWidget):
             selected_columns = self.get_selected_columns()
             selected_measures = self.get_selected_measures()
             
+            # Filter out sample_id from analysis columns as a safety measure
+            selected_columns = [col for col in selected_columns if col != 'sample_id']
+            
             if not selected_columns:
-                QMessageBox.warning(self, "Warning", "Please select at least one column for analysis.")
+                QMessageBox.warning(self, "Warning", "Please select at least one column for analysis (sample_id is excluded from statistical analysis).")
                 return
                 
             if not selected_measures:
@@ -778,6 +801,9 @@ class StatisticsTab(QWidget):
             
             # Display results in table
             self.display_statistical_results(results, selected_measures)
+            
+            # Generate statistical datasets for potential integration
+            self._generate_statistical_datasets(data, results, selected_measures, selected_columns)
             
             # Store results for potential export
             self.analysis_results['descriptive'] = {
@@ -888,6 +914,11 @@ class StatisticsTab(QWidget):
             x_col = self.x_var_combo.currentText()
             y_col = self.y_var_combo.currentText()
             
+            # Check for sample_id usage in regression
+            if x_col == 'sample_id' or y_col == 'sample_id':
+                QMessageBox.warning(self, "Warning", "sample_id cannot be used as a variable in regression analysis. Please select different X and Y variables.")
+                return
+            
             if not x_col or not y_col or x_col == y_col:
                 QMessageBox.warning(self, "Warning", "Please select different X and Y variables.")
                 return
@@ -940,8 +971,13 @@ class StatisticsTab(QWidget):
                     regression_results, x_col, y_col
                 )
                 
+                # Enhance datasets with sample IDs and original data context
+                enhanced_datasets = self._enhance_regression_datasets(
+                    datasets, data, x_col, y_col, valid_mask, regression_results
+                )
+                
                 # Store all generated datasets
-                for dataset_type, dataset_df in datasets.items():
+                for dataset_type, dataset_df in enhanced_datasets.items():
                     dataset_name = f"Regression_{x_col}_vs_{y_col}_{dataset_type}"
                     self.generated_datasets[dataset_name] = dataset_df
                     
@@ -1537,8 +1573,11 @@ Datasets Created:
             data = self.data_manager.get_data()
             selected_columns = self.get_selected_transform_columns()
             
+            # Filter out sample_id from transformation columns as a safety measure
+            selected_columns = [col for col in selected_columns if col != 'sample_id']
+            
             if not selected_columns:
-                QMessageBox.warning(self, "Warning", "Please select at least one column to transform.")
+                QMessageBox.warning(self, "Warning", "Please select at least one column to transform (sample_id is excluded from transformations).")
                 return
                 
             transformation = self.transform_combo.currentText()
@@ -1754,7 +1793,7 @@ Datasets Created:
                 QMessageBox.critical(self, "Error", f"Failed to export results: {str(e)}")
         
     def add_to_main_dataset(self):
-        """Add generated data to main dataset."""
+        """Add generated data to main dataset with proper alignment and ID tracking."""
         current_item = self.generated_data_list.currentItem()
         if not current_item:
             QMessageBox.warning(self, "Warning", "Please select a dataset to add to main data.")
@@ -1767,38 +1806,213 @@ Datasets Created:
             
         try:
             # Get the generated dataset
-            generated_data = self.generated_datasets[dataset_name]
+            generated_data = self.generated_datasets[dataset_name].copy()
+            main_data = self.data_manager.get_data().copy()
             
-            # Add columns to main dataset
-            main_data = self.data_manager.get_data()
+            # Ensure main data has a sample ID column
+            if 'sample_id' not in main_data.columns:
+                main_data['sample_id'] = range(len(main_data))
+                self.status_label.setText("Added sample_id column to main dataset")
             
-            # Find columns that don't exist in main data
-            new_columns = [col for col in generated_data.columns if col not in main_data.columns]
-            
-            if not new_columns:
-                QMessageBox.information(self, "Info", "No new columns to add - all columns already exist in main dataset.")
-                return
-                
-            # Add new columns to main data
-            for col in new_columns:
+            # Ensure generated data has compatible sample IDs
+            if 'sample_id' not in generated_data.columns:
                 if len(generated_data) == len(main_data):
-                    main_data[col] = generated_data[col]
+                    # Same length - assume row correspondence
+                    generated_data['sample_id'] = main_data['sample_id'].values
                 else:
-                    # Handle size mismatch
-                    main_data[col] = np.nan
-                    min_len = min(len(main_data), len(generated_data))
-                    main_data.iloc[:min_len, main_data.columns.get_loc(col)] = generated_data[col].iloc[:min_len]
+                    # Different length - create new IDs or handle appropriately
+                    generated_data['sample_id'] = range(len(main_data), len(main_data) + len(generated_data))
             
-            # Update all tabs
+            # Check data compatibility and merging strategy
+            merge_strategy = self._determine_merge_strategy(main_data, generated_data, dataset_name)
+            
+            if merge_strategy == "direct_append":
+                # Same number of rows - direct column addition
+                result_data = self._merge_by_direct_append(main_data, generated_data)
+                merge_info = f"Direct append: {len(generated_data.columns)-1} new columns added"
+                
+            elif merge_strategy == "id_based_merge":
+                # Merge based on sample IDs
+                result_data = self._merge_by_sample_id(main_data, generated_data)
+                merge_info = f"ID-based merge: {len(generated_data.columns)-1} columns merged by sample_id"
+                
+            elif merge_strategy == "statistical_expansion":
+                # Expand statistical results to match main data
+                result_data = self._expand_statistical_results(main_data, generated_data, dataset_name)
+                merge_info = f"Statistical expansion: expanded {len(generated_data)} statistical results to {len(main_data)} samples"
+                
+            else:
+                QMessageBox.warning(self, "Warning", f"Cannot determine appropriate merge strategy for dataset: {dataset_name}")
+                return
+            
+            # Validate the merged result
+            if not self._validate_merged_data(result_data, main_data, generated_data):
+                QMessageBox.critical(self, "Error", "Data validation failed after merge. Operation cancelled.")
+                return
+            
+            # Update the data manager with the merged data
+            self.data_manager.set_data(result_data, "Updated Main Data")
+            
+            # Update all UI components
             self.update_column_lists()
-            # Signal other tabs to update as well
-            self.data_created.emit("Updated_Main_Data", main_data)
             
-            self.status_label.setText(f"Added {len(new_columns)} new columns to main dataset")
-            QMessageBox.information(self, "Success", f"Successfully added {len(new_columns)} columns to main dataset:\n" + ", ".join(new_columns))
+            # Signal other tabs to update
+            self.data_created.emit("Updated_Main_Data", result_data)
+            
+            # Show success message with details
+            new_columns = [col for col in result_data.columns if col not in main_data.columns or col == 'sample_id']
+            success_msg = f"Successfully integrated dataset: {dataset_name}\n\n"
+            success_msg += f"Merge strategy: {merge_strategy}\n"
+            success_msg += f"Details: {merge_info}\n"
+            success_msg += f"New/updated columns: {', '.join(new_columns)}\n"
+            success_msg += f"Final dataset size: {len(result_data)} rows × {len(result_data.columns)} columns"
+            
+            QMessageBox.information(self, "Integration Successful", success_msg)
+            self.status_label.setText(f"Integrated {dataset_name} - {len(result_data)} rows × {len(result_data.columns)} columns")
             
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to add to main dataset: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to integrate dataset: {str(e)}")
+            
+    def _determine_merge_strategy(self, main_data, generated_data, dataset_name):
+        """Determine the best strategy for merging generated data with main dataset."""
+        
+        # Check if it's statistical results (few rows, summary data)
+        if len(generated_data) < 20 and any(keyword in dataset_name.lower() 
+                                           for keyword in ['stats', 'statistics', 'summary', 'descriptive']):
+            return "statistical_expansion"
+        
+        # Check if same number of rows (direct correspondence)
+        if len(generated_data) == len(main_data):
+            return "direct_append"
+        
+        # Check if sample IDs overlap (can merge by ID)
+        if 'sample_id' in generated_data.columns and 'sample_id' in main_data.columns:
+            common_ids = set(main_data['sample_id']).intersection(set(generated_data['sample_id']))
+            if len(common_ids) > 0:
+                return "id_based_merge"
+        
+        # For regression/prediction data, try to align by index
+        if any(keyword in dataset_name.lower() 
+               for keyword in ['regression', 'prediction', 'transform']):
+            return "direct_append"  # Will handle size differences in the method
+        
+        return "unknown"
+    
+    def _merge_by_direct_append(self, main_data, generated_data):
+        """Merge by directly appending columns (same row count)."""
+        result_data = main_data.copy()
+        
+        # Add new columns from generated data
+        for col in generated_data.columns:
+            if col != 'sample_id':  # Don't duplicate sample_id
+                if col in result_data.columns:
+                    # Handle duplicate column names
+                    col_name = f"{col}_generated"
+                    counter = 1
+                    while col_name in result_data.columns:
+                        col_name = f"{col}_generated_{counter}"
+                        counter += 1
+                else:
+                    col_name = col
+                
+                # Ensure same length
+                if len(generated_data) == len(result_data):
+                    result_data[col_name] = generated_data[col].values
+                else:
+                    # Handle length mismatch
+                    result_data[col_name] = np.nan
+                    min_len = min(len(result_data), len(generated_data))
+                    result_data.iloc[:min_len, result_data.columns.get_loc(col_name)] = generated_data[col].iloc[:min_len].values
+        
+        return result_data
+    
+    def _merge_by_sample_id(self, main_data, generated_data):
+        """Merge datasets using sample_id as the key."""
+        # Use pandas merge for proper ID-based joining
+        result_data = pd.merge(main_data, generated_data, on='sample_id', how='left', suffixes=('', '_generated'))
+        
+        # Fill NaN values for samples without generated data
+        for col in generated_data.columns:
+            if col != 'sample_id' and col in result_data.columns:
+                result_data[col] = result_data[col].fillna(0)  # or appropriate default
+        
+        return result_data
+    
+    def _expand_statistical_results(self, main_data, generated_data, dataset_name):
+        """Expand statistical summary results to individual sample level."""
+        result_data = main_data.copy()
+        
+        # Determine which columns the statistics apply to
+        source_columns = self._identify_source_columns(dataset_name, main_data.columns)
+        
+        if not source_columns:
+            # If can't identify source columns, add as dataset-level statistics
+            for col in generated_data.columns:
+                if col != 'sample_id':
+                    stat_col_name = f"dataset_{col}"
+                    result_data[stat_col_name] = generated_data[col].iloc[0] if len(generated_data) > 0 else np.nan
+        else:
+            # Add column-specific statistics
+            for i, stat_row in generated_data.iterrows():
+                for col in generated_data.columns:
+                    if col != 'sample_id':
+                        # Create descriptive column names
+                        if len(source_columns) == 1:
+                            stat_col_name = f"{source_columns[0]}_{col}"
+                        else:
+                            stat_col_name = f"stats_{col}"
+                        
+                        result_data[stat_col_name] = stat_row[col]
+        
+        return result_data
+    
+    def _identify_source_columns(self, dataset_name, main_columns):
+        """Identify which columns in main data the statistics apply to."""
+        source_columns = []
+        
+        # Parse dataset name for column hints
+        for col in main_columns:
+            if col.lower() in dataset_name.lower():
+                source_columns.append(col)
+        
+        # Look for numeric columns if no specific columns identified
+        if not source_columns:
+            # This would need access to main data types
+            pass
+        
+        return source_columns
+    
+    def _validate_merged_data(self, result_data, main_data, generated_data):
+        """Validate the merged dataset for consistency and correctness."""
+        try:
+            # Check basic properties
+            if len(result_data) < len(main_data):
+                return False
+            
+            # Check that sample_id column exists and is unique
+            if 'sample_id' in result_data.columns:
+                if result_data['sample_id'].duplicated().any():
+                    return False
+            
+            # Check for extreme memory usage
+            memory_usage_mb = result_data.memory_usage(deep=True).sum() / 1024 / 1024
+            if memory_usage_mb > 500:  # 500 MB limit
+                return False
+            
+            # Check data types are reasonable
+            for col in result_data.columns:
+                if result_data[col].dtype == 'object':
+                    # Check for mixed types that might indicate problems
+                    sample = result_data[col].dropna().head(100)
+                    if len(sample) > 0:
+                        types = set(type(x).__name__ for x in sample)
+                        if len(types) > 2:  # Allow some type variation
+                            return False
+            
+            return True
+            
+        except Exception:
+            return False
         
     def show_generated_data(self, item):
         """Show selected generated dataset."""
@@ -1945,3 +2159,170 @@ Datasets Created:
             summary_text += "• Export your generated datasets or add them to the main dataset\n"
         
         self.analysis_history.setText(summary_text)
+    
+    def _generate_statistical_datasets(self, original_data, results, selected_measures, selected_columns):
+        """Generate statistical datasets that can be integrated with main data."""
+        timestamp = pd.Timestamp.now()
+        
+        # Create sample-level statistical features
+        sample_stats_data = original_data[['sample_id'] if 'sample_id' in original_data.columns else []].copy()
+        
+        # Add sample ID if not present
+        if 'sample_id' not in sample_stats_data.columns:
+            sample_stats_data['sample_id'] = range(len(original_data))
+        
+        # Add column-specific statistics as features for each sample
+        for col in selected_columns:
+            if col in results:
+                col_stats = results[col]
+                for measure in selected_measures:
+                    if measure in col_stats:
+                        # Create feature name
+                        feature_name = f"{col}_{measure}_comparison"
+                        
+                        # Calculate how each sample compares to the statistic
+                        if measure in ['mean', 'median']:
+                            # Difference from central tendency
+                            sample_stats_data[feature_name] = original_data[col] - col_stats[measure]
+                        elif measure == 'std':
+                            # Z-score calculation
+                            feature_name = f"{col}_zscore"
+                            if col_stats.get('std', 0) > 0 and 'mean' in col_stats:
+                                sample_stats_data[feature_name] = (original_data[col] - col_stats['mean']) / col_stats['std']
+                            else:
+                                sample_stats_data[feature_name] = 0
+                        elif measure in ['min', 'max']:
+                            # Percentile position
+                            feature_name = f"{col}_{measure}_ratio"
+                            if measure == 'min' and 'max' in col_stats and col_stats['max'] != col_stats['min']:
+                                sample_stats_data[feature_name] = (original_data[col] - col_stats['min']) / (col_stats['max'] - col_stats['min'])
+                            elif measure == 'max' and col_stats['max'] > 0:
+                                sample_stats_data[feature_name] = original_data[col] / col_stats['max']
+                        elif measure == 'count':
+                            # Data availability indicator
+                            feature_name = f"{col}_availability"
+                            sample_stats_data[feature_name] = (~pd.isna(original_data[col])).astype(int)
+        
+        # Store the sample-level statistical features
+        dataset_name = f"Statistical_Features_{timestamp.strftime('%H%M%S')}"
+        self.generated_datasets[dataset_name] = sample_stats_data
+        
+        # Create summary statistics dataset
+        summary_data = []
+        for col in selected_columns:
+            if col in results:
+                col_stats = results[col]
+                for measure in selected_measures:
+                    if measure in col_stats:
+                        summary_data.append({
+                            'column': col,
+                            'statistic': measure,
+                            'value': col_stats[measure],
+                            'sample_count': len(original_data[col].dropna()),
+                            'analysis_timestamp': timestamp
+                        })
+        
+        if summary_data:
+            summary_df = pd.DataFrame(summary_data)
+            summary_dataset_name = f"Statistical_Summary_{timestamp.strftime('%H%M%S')}"
+            self.generated_datasets[summary_dataset_name] = summary_df
+        
+        # Update the generated data list
+        self.update_generated_data_list()
+        
+        # Emit signals for the new datasets
+        if dataset_name in self.generated_datasets:
+            self.data_created.emit(dataset_name, self.generated_datasets[dataset_name])
+        if summary_data:
+            self.data_created.emit(summary_dataset_name, summary_df)
+    
+    def _enhance_regression_datasets(self, datasets, original_data, x_col, y_col, valid_mask, regression_results):
+        """Enhance regression datasets with sample IDs and additional context."""
+        enhanced_datasets = {}
+        
+        # Create sample ID mapping for valid data points
+        valid_data = original_data.loc[valid_mask].copy()
+        if 'sample_id' not in valid_data.columns:
+            valid_data['sample_id'] = range(len(valid_data))
+        
+        # Enhanced regression line dataset with extended predictions
+        if 'regression_line' in datasets:
+            reg_line_df = datasets['regression_line'].copy()
+            # Add metadata
+            reg_line_df['model_type'] = regression_results.get('model_type', 'unknown')
+            reg_line_df['r_squared'] = regression_results.get('r_squared', 0)
+            enhanced_datasets['regression_line'] = reg_line_df
+        
+        # Enhanced residuals dataset with sample information
+        if 'residuals' in datasets and len(datasets['residuals']) == len(valid_data):
+            residuals_df = datasets['residuals'].copy()
+            residuals_df['sample_id'] = valid_data['sample_id'].values
+            residuals_df[f'{x_col}_original'] = valid_data[x_col].values
+            residuals_df[f'{y_col}_original'] = valid_data[y_col].values
+            residuals_df['abs_residuals'] = np.abs(residuals_df['residuals'])
+            residuals_df['residual_percentile'] = residuals_df['residuals'].rank(pct=True)
+            enhanced_datasets['residuals_analysis'] = residuals_df
+        
+        # Enhanced predictions dataset
+        if 'predictions' in datasets and len(datasets['predictions']) == len(valid_data):
+            predictions_df = datasets['predictions'].copy()
+            predictions_df['sample_id'] = valid_data['sample_id'].values
+            predictions_df[f'{x_col}_original'] = valid_data[x_col].values
+            predictions_df[f'{y_col}_original'] = valid_data[y_col].values
+            
+            # Calculate prediction accuracy metrics per sample
+            if f'{y_col}_predicted' in predictions_df.columns:
+                predictions_df['prediction_error'] = predictions_df[f'{y_col}_original'] - predictions_df[f'{y_col}_predicted']
+                predictions_df['abs_prediction_error'] = np.abs(predictions_df['prediction_error'])
+                predictions_df['squared_error'] = predictions_df['prediction_error'] ** 2
+                
+                # Prediction quality indicators
+                mean_error = predictions_df['abs_prediction_error'].mean()
+                predictions_df['error_relative_to_mean'] = predictions_df['abs_prediction_error'] / mean_error if mean_error > 0 else 0
+                predictions_df['prediction_quality'] = np.where(
+                    predictions_df['error_relative_to_mean'] <= 0.5, 'excellent',
+                    np.where(predictions_df['error_relative_to_mean'] <= 1.0, 'good',
+                            np.where(predictions_df['error_relative_to_mean'] <= 2.0, 'fair', 'poor'))
+                )
+            
+            enhanced_datasets['predictions_analysis'] = predictions_df
+        
+        # Create model diagnostics dataset
+        diagnostics_data = {
+            'metric': ['r_squared', 'rmse', 'mae', 'model_type', 'sample_count'],
+            'value': [
+                regression_results.get('r_squared', 0),
+                regression_results.get('rmse', 0),
+                regression_results.get('mae', 0),
+                regression_results.get('model_type', 'unknown'),
+                len(valid_data)
+            ],
+            'description': [
+                'Coefficient of determination',
+                'Root mean squared error',
+                'Mean absolute error',
+                'Type of regression model',
+                'Number of data points used'
+            ]
+        }
+        
+        # Add model-specific parameters
+        if regression_results.get('model_type') == 'polynomial' and 'degree' in regression_results:
+            diagnostics_data['metric'].append('polynomial_degree')
+            diagnostics_data['value'].append(regression_results['degree'])
+            diagnostics_data['description'].append('Degree of polynomial')
+        
+        if regression_results.get('model_type') in ['ridge', 'lasso'] and 'alpha' in regression_results:
+            diagnostics_data['metric'].append('regularization_alpha')
+            diagnostics_data['value'].append(regression_results['alpha'])
+            diagnostics_data['description'].append('Regularization parameter')
+        
+        diagnostics_df = pd.DataFrame(diagnostics_data)
+        enhanced_datasets['model_diagnostics'] = diagnostics_df
+        
+        # Include original datasets that don't need enhancement
+        for key, df in datasets.items():
+            if key not in ['regression_line', 'residuals', 'predictions']:
+                enhanced_datasets[key] = df
+        
+        return enhanced_datasets

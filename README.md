@@ -1,9 +1,8 @@
 # Data Analysis Pro 🚀
 
-A professional-grade data analysis and visualization application built with **PySide6** (Qt for Python). This application provides a modern, intuitive interface for comprehensive data analysis tasks.
+A professional-grade data analysis and visualization application built with **PySide6**. This application provides a modern, intuitive interface for comprehensive data analysis tasks across multiple modalities.
 
 ## ✨ Features
-
 ### 📊 Data Import & Preview
 - Load CSV and Excel files with intelligent file detection
 - Interactive data preview with pagination
@@ -30,27 +29,6 @@ A professional-grade data analysis and visualization application built with **Py
 - Signal comparison (original vs processed)
 - Export capabilities for signal plots
 
-## 🎨 Why PySide6 Instead of Tkinter?
-
-**PySide6 provides a significantly more professional appearance:**
-
-### ✅ PySide6 Advantages:
-- **Native look and feel** on all platforms (Windows, macOS, Linux)
-- **Modern styling** with built-in themes and customization
-- **Professional widgets** specifically designed for data applications
-- **Excellent matplotlib integration** for embedded plots
-- **High DPI support** for modern displays
-- **Responsive layouts** that adapt to different screen sizes
-- **Built-in dark/light theme support**
-- **Industry standard** - used by professional applications
-
-### ❌ Tkinter Limitations:
-- Outdated, 1990s-style appearance
-- Limited styling and theming options
-- Poor high-DPI support
-- Basic widgets that look unprofessional
-- Inconsistent appearance across platforms
-
 ## 🚀 Installation & Setup
 
 ### 1. Prerequisites
@@ -72,17 +50,6 @@ pip install -r requirements.txt
 ```powershell
 python main.py
 ```
-
-## 📋 Dependencies
-
-- **PySide6** >= 6.4.0 - Modern Qt-based GUI framework
-- **qdarktheme** >= 2.1.0 - Professional dark/light themes
-- **pandas** >= 2.0.0 - Data manipulation and analysis
-- **matplotlib** >= 3.7.0 - Plotting and visualization
-- **numpy** >= 1.24.0 - Numerical computing
-- **scipy** >= 1.10.0 - Scientific computing and signal processing
-- **seaborn** >= 0.12.0 - Statistical data visualization
-- **openpyxl** >= 3.1.0 - Excel file support
 
 ## 🏗️ Project Structure
 
@@ -219,19 +186,3 @@ DataAnaly/
 │       └── validators.py  # Input validation
 └── README.md
 ```
-
-## Requirements
-
-- Python 3.8+
-- tkinter (usually included with Python)
-- pandas
-- matplotlib
-- numpy
-- scipy
-- seaborn
-- openpyxl
-- xlrd
-
-## License
-
-This project is open source and available under the MIT License.

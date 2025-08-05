@@ -35,6 +35,9 @@ class PlottingTab(QWidget):
         self.data_manager = data_manager
         self.current_plot_data = None
         
+        # Store subplot configurations from advanced dialog
+        self.subplot_configs_data = []
+        
         # Internal settings storage - persists across window resizes and plot updates
         self.internal_settings = {
             'figure_size': (10, 10),  # Default figure size (width, height)
@@ -764,9 +767,9 @@ class PlottingTab(QWidget):
         self.figure.set_size_inches(width, height)
         self.figure.set_dpi(dpi)
         
-        # Set figure background to a light grey to contrast with plot area
-        self.figure.patch.set_facecolor("#2B2B2B")
-        self.figure.patch.set_edgecolor("#161616")
+        # Set figure background to white for consistency
+        self.figure.patch.set_facecolor("white")
+        self.figure.patch.set_edgecolor("lightgray")
         self.figure.patch.set_linewidth(1)
         
         # Apply the selected plot style
@@ -798,8 +801,8 @@ class PlottingTab(QWidget):
             return
             
         self.setEnabled(True)
-        columns = self.data_manager.get_columns()
-        numeric_columns = self.data_manager.get_numeric_columns()
+        columns = self.data_manager.get_analysis_columns()  # Exclude sample_id
+        numeric_columns = self.data_manager.get_analysis_numeric_columns()  # Exclude sample_id
         
         # Clear and populate X/Y combo boxes with numeric columns
         self.x_combo.clear()
@@ -1080,7 +1083,7 @@ class PlottingTab(QWidget):
     def create_pair_plot(self):
         """Create a pair plot of numeric columns."""
         data = self.data_manager.get_data()
-        numeric_cols = self.data_manager.get_numeric_columns()
+        numeric_cols = self.data_manager.get_analysis_numeric_columns()  # Exclude sample_id
         
         if len(numeric_cols) < 2:
             return
@@ -1116,12 +1119,12 @@ class PlottingTab(QWidget):
         rows = self.grid_rows_spin.value()
         cols = self.grid_cols_spin.value()
         
-        # Get current X and Y columns from main selection
-        x_col = self.x_combo.currentText()
-        y_col = self.y_combo.currentText()
+        # Get current X and Y columns from main selection (defaults)
+        default_x_col = self.x_combo.currentText()
+        default_y_col = self.y_combo.currentText()
         color_col = self.color_combo.currentText()
         
-        if not x_col or not y_col:
+        if not default_x_col or not default_y_col:
             return
         
         # Clear the figure
@@ -1138,22 +1141,128 @@ class PlottingTab(QWidget):
                 ax = self.figure.add_subplot(rows, cols, subplot_num)
                 ax.set_facecolor('white')  # Ensure each subplot has white background
                 
-                # Create a basic plot (can be customized through popup dialog)
-                plot_type = "line"  # Default plot type
+                # Get plot type from dialog configuration if available
+                subplot_index = i * cols + j
+                plot_type = "line"  # Default fallback
+                x_col = default_x_col  # Default to main selection
+                y_col = default_y_col  # Default to main selection
+                custom_title = f"Plot {subplot_num}: {y_col} vs {x_col}"
+                subplot_limits = None
+                
+                # Debug: Print what we're checking
+                print(f"DEBUG: Creating subplot {subplot_index} at position ({i},{j})")
+                print(f"DEBUG: hasattr subplot_configs_data: {hasattr(self, 'subplot_configs_data')}")
+                
+                # Check if we have advanced dialog configurations
+                if hasattr(self, 'subplot_configs_data') and self.subplot_configs_data:
+                    print(f"DEBUG: subplot_configs_data exists, length: {len(self.subplot_configs_data)}")
+                    if subplot_index < len(self.subplot_configs_data):
+                        try:
+                            print(f"DEBUG: Reading config for subplot {subplot_index}")
+                            config_data = self.subplot_configs_data[subplot_index]
+                            
+                            # Read plot type from the stored configuration
+                            plot_type_text = config_data['plot_type']
+                            plot_type = plot_type_text.lower()  # Convert "Line" to "line"
+                            print(f"DEBUG: Plot type changed from 'line' to '{plot_type}' (from '{plot_type_text}')")
+                            
+                            # Read individual X/Y columns if specified
+                            if 'x_column' in config_data and config_data['x_column']:
+                                x_col = config_data['x_column']
+                                print(f"DEBUG: Using custom X column: '{x_col}'")
+                            else:
+                                print(f"DEBUG: No custom X column found, using default: '{x_col}'")
+                            
+                            if 'y_column' in config_data and config_data['y_column']:
+                                y_col = config_data['y_column']
+                                print(f"DEBUG: Using custom Y column: '{y_col}'")
+                            else:
+                                print(f"DEBUG: No custom Y column found, using default: '{y_col}'")
+                            
+                            # Also apply title from stored configuration if available
+                            dialog_title = config_data['title']
+                            if dialog_title.strip():
+                                custom_title = dialog_title
+                                print(f"DEBUG: Custom title: '{custom_title}'")
+                            else:
+                                # Update default title with actual columns used
+                                custom_title = f"Plot {subplot_num}: {y_col} vs {x_col}"
+                                
+                            # Apply axis limits if configured and individual styling is enabled
+                            if config_data['individual_styling_enabled'] and config_data.get('axes_enabled', True):
+                                try:
+                                    xlim_min = config_data['xlim_min']
+                                    xlim_max = config_data['xlim_max']
+                                    ylim_min = config_data['ylim_min']
+                                    ylim_max = config_data['ylim_max']
+                                    
+                                    # Store limits to apply after creating the plot
+                                    subplot_limits = {
+                                        'xlim': (xlim_min, xlim_max),
+                                        'ylim': (ylim_min, ylim_max)
+                                    }
+                                    print(f"DEBUG: Axis limits set: X({xlim_min}, {xlim_max}), Y({ylim_min}, {ylim_max})")
+                                except Exception as e:
+                                    print(f"DEBUG: Error reading axis limits: {e}")
+                                    subplot_limits = None
+                            else:
+                                print(f"DEBUG: Individual axes styling not enabled (individual_styling_enabled={config_data['individual_styling_enabled']}, axes_enabled={config_data.get('axes_enabled', True)})")
+                        except Exception as e:
+                            print(f"DEBUG: Error reading subplot config for {subplot_index}: {e}")
+                            plot_type = "line"
+                            x_col = default_x_col
+                            y_col = default_y_col
+                            custom_title = f"Plot {subplot_num}: {y_col} vs {x_col}"
+                            subplot_limits = None
+                    else:
+                        print(f"DEBUG: No config available for subplot {subplot_index}")
+                else:
+                    print("DEBUG: No subplot_configs_data found - using defaults")
+                
+                print(f"DEBUG: Final plot_type for subplot {subplot_index}: '{plot_type}'")
+                
                 self.create_subplot_plot(ax, plot_type, data, x_col, y_col, color_col)
                 
                 # Apply basic formatting
-                ax.set_title(f"Plot {subplot_num}: {y_col} vs {x_col}", fontsize=10)
+                ax.set_title(custom_title, fontsize=10)
                 ax.set_xlabel(x_col, fontsize=9)
                 ax.set_ylabel(y_col, fontsize=9)
+                
+                # Apply custom limits if available
+                if subplot_limits:
+                    try:
+                        ax.set_xlim(subplot_limits['xlim'])
+                        ax.set_ylim(subplot_limits['ylim'])
+                        print(f"DEBUG: Applied limits to subplot {subplot_index}")
+                    except Exception as e:
+                        print(f"DEBUG: Error setting subplot limits: {e}")
         
         # Adjust layout to prevent overlap
         self.figure.tight_layout()
     
     def create_subplot_plot(self, ax, plot_type, data, x_col, y_col, color_col):
         """Create a specific plot type for a subplot."""
+        print(f"DEBUG: create_subplot_plot called with plot_type='{plot_type}', x_col='{x_col}', y_col='{y_col}'")
+        
+        # Validate that columns exist in data
+        if x_col not in data.columns:
+            print(f"ERROR: X column '{x_col}' not found in data. Available columns: {list(data.columns)}")
+            ax.text(0.5, 0.5, f"Error: X column '{x_col}' not found", 
+                   ha='center', va='center', transform=ax.transAxes)
+            return
+            
+        if y_col not in data.columns:
+            print(f"ERROR: Y column '{y_col}' not found in data. Available columns: {list(data.columns)}")
+            ax.text(0.5, 0.5, f"Error: Y column '{y_col}' not found", 
+                   ha='center', va='center', transform=ax.transAxes)
+            return
+        
         x_data = data[x_col]
         y_data = data[y_col]
+        
+        print(f"DEBUG: x_data shape: {x_data.shape}, y_data shape: {y_data.shape}")
+        print(f"DEBUG: x_data range: {x_data.min()} to {x_data.max()}")
+        print(f"DEBUG: y_data range: {y_data.min()} to {y_data.max()}")
         
         # Get styling parameters
         linewidth = self.linewidth_spin.value()
@@ -1417,6 +1526,10 @@ class PlottingTab(QWidget):
             self.internal_settings['axes_settings'].update(settings['axes_settings'])
         if 'multi_settings' in settings:
             self.internal_settings['multi_settings'].update(settings['multi_settings'])
+            # Store subplot configurations for multi-plot access
+            if 'subplot_configs' in settings['multi_settings']:
+                self.subplot_configs_data = settings['multi_settings']['subplot_configs']
+                print(f"DEBUG: Stored subplot configurations: {len(self.subplot_configs_data)} configs")
         
         # Sync UI to match updated internal settings
         self.sync_ui_to_internal_settings()
@@ -1501,10 +1614,29 @@ class PlotCustomizationDialog(QDialog):
         button_layout.addWidget(cancel_btn)
         
         apply_btn = QPushButton("✅ Apply")
-        apply_btn.clicked.connect(self.accept)
+        apply_btn.clicked.connect(self.apply_settings)
         button_layout.addWidget(apply_btn)
         
         layout.addLayout(button_layout)
+        
+    def apply_settings(self):
+        """Apply settings and close dialog."""
+        # Store the current subplot configurations before closing
+        print("DEBUG: apply_settings called - storing subplot configurations")
+        
+        # Make sure subplot configurations are up to date
+        if hasattr(self, 'subplot_configs'):
+            print(f"DEBUG: Found {len(self.subplot_configs)} subplot configs to store")
+            for i, config in enumerate(self.subplot_configs):
+                plot_type = config['plot_type_combo'].currentText()
+                title = config['title_edit'].text()
+                individual_enabled = config['axes_group'].isEnabled()
+                print(f"DEBUG: Subplot {i}: type='{plot_type}', title='{title}', individual_enabled={individual_enabled}")
+        else:
+            print("DEBUG: No subplot_configs found!")
+            
+        # Close the dialog with accept
+        self.accept()
         
     def create_general_tab(self):
         """Create general customization tab."""
@@ -1847,15 +1979,51 @@ class PlotCustomizationDialog(QDialog):
         
         scroll_layout.addWidget(grid_group, 0, 0, 1, 2)
         
+        # General data selection for all subplots
+        data_group = QGroupBox("General Data Selection (applies to all subplots unless individually overridden)")
+        data_layout = QGridLayout(data_group)
+        
+        # Default X column for all subplots
+        data_layout.addWidget(QLabel("Default X Column:"), 0, 0)
+        self.default_x_combo = QComboBox()
+        if hasattr(self.parent(), 'data_manager') and self.parent().data_manager.has_data():
+            self.default_x_combo.addItems(self.parent().data_manager.get_analysis_numeric_columns())
+            # Set to current main selection if available
+            if hasattr(self.parent(), 'x_combo'):
+                current_x = self.parent().x_combo.currentText()
+                if current_x in self.parent().data_manager.get_analysis_numeric_columns():
+                    self.default_x_combo.setCurrentText(current_x)
+        data_layout.addWidget(self.default_x_combo, 0, 1)
+        
+        # Default Y column for all subplots
+        data_layout.addWidget(QLabel("Default Y Column:"), 1, 0)
+        self.default_y_combo = QComboBox()
+        if hasattr(self.parent(), 'data_manager') and self.parent().data_manager.has_data():
+            self.default_y_combo.addItems(self.parent().data_manager.get_analysis_numeric_columns())
+            # Set to current main selection if available
+            if hasattr(self.parent(), 'y_combo'):
+                current_y = self.parent().y_combo.currentText()
+                if current_y in self.parent().data_manager.get_analysis_numeric_columns():
+                    self.default_y_combo.setCurrentText(current_y)
+        data_layout.addWidget(self.default_y_combo, 1, 1)
+        
+        # Button to apply defaults to all subplots
+        apply_defaults_btn = QPushButton("📋 Apply to All Subplots")
+        apply_defaults_btn.clicked.connect(self.apply_defaults_to_all_subplots)
+        data_layout.addWidget(apply_defaults_btn, 2, 0, 1, 2)
+        
+        scroll_layout.addWidget(data_group, 1, 0, 1, 2)
+        
         # Individual subplot configuration
         self.subplot_group = QGroupBox("Individual Subplot Configuration")
         self.subplot_layout = QVBoxLayout(self.subplot_group)
-        scroll_layout.addWidget(self.subplot_group, 1, 0, 1, 2)
+        scroll_layout.addWidget(self.subplot_group, 2, 0, 1, 2)
         
         # Individual subplot styling options
         self.individual_styling_check = QCheckBox("Enable individual styling for each subplot")
+        self.individual_styling_check.setChecked(True)  # Enable by default for multi-plot
         self.individual_styling_check.toggled.connect(self.toggle_individual_styling)
-        scroll_layout.addWidget(self.individual_styling_check, 2, 0, 1, 2)
+        scroll_layout.addWidget(self.individual_styling_check, 3, 0, 1, 2)
         
         # This will be populated dynamically based on grid size
         self.subplot_configs = []
@@ -1872,8 +2040,30 @@ class PlotCustomizationDialog(QDialog):
         
         return tab
         
+    def apply_defaults_to_all_subplots(self):
+        """Apply the default X/Y columns to all individual subplots."""
+        if not hasattr(self, 'subplot_configs') or not hasattr(self, 'default_x_combo') or not hasattr(self, 'default_y_combo'):
+            return
+            
+        default_x = self.default_x_combo.currentText()
+        default_y = self.default_y_combo.currentText()
+        
+        print(f"DEBUG: Applying defaults to all subplots: X='{default_x}', Y='{default_y}'")
+        
+        for i, config in enumerate(self.subplot_configs):
+            if 'x_column_combo' in config:
+                config['x_column_combo'].setCurrentText(default_x)
+                print(f"DEBUG: Set subplot {i} X column to '{default_x}'")
+            if 'y_column_combo' in config:
+                config['y_column_combo'].setCurrentText(default_y)
+                print(f"DEBUG: Set subplot {i} Y column to '{default_y}'")
+        
+        print("DEBUG: Applied default columns to all subplots")
+        
     def update_subplot_configs(self):
         """Update individual subplot configuration controls."""
+        print("DEBUG: update_subplot_configs called")
+        
         # Clear existing controls
         for config in self.subplot_configs:
             config['widget'].setParent(None)
@@ -1887,6 +2077,8 @@ class PlotCustomizationDialog(QDialog):
         
         rows = self.grid_rows_dialog.value()
         cols = self.grid_cols_dialog.value()
+        
+        print(f"DEBUG: Creating subplot configs for {rows}x{cols} grid")
         
         plot_types = ["line", "scatter", "bar", "hist", "box", "violin"]
         
@@ -1904,11 +2096,41 @@ class PlotCustomizationDialog(QDialog):
                 plot_type_combo.addItems([t.title() for t in plot_types])
                 subplot_layout.addWidget(plot_type_combo, 0, 1)
                 
+                # X and Y column selection for this subplot
+                subplot_layout.addWidget(QLabel("X Column:"), 1, 0)
+                x_column_combo = QComboBox()
+                # Get available columns from parent
+                if hasattr(self.parent(), 'data_manager') and self.parent().data_manager.has_data():
+                    x_column_combo.addItems(self.parent().data_manager.get_analysis_numeric_columns())
+                    # Set default from general selection if available
+                    if hasattr(self, 'default_x_combo') and self.default_x_combo.currentText():
+                        default_x = self.default_x_combo.currentText()
+                        if default_x in self.parent().data_manager.get_analysis_numeric_columns():
+                            x_column_combo.setCurrentText(default_x)
+                    elif x_column_combo.count() > 0:
+                        x_column_combo.setCurrentIndex(0)
+                subplot_layout.addWidget(x_column_combo, 1, 1)
+                
+                subplot_layout.addWidget(QLabel("Y Column:"), 2, 0)
+                y_column_combo = QComboBox()
+                if hasattr(self.parent(), 'data_manager') and self.parent().data_manager.has_data():
+                    y_column_combo.addItems(self.parent().data_manager.get_analysis_numeric_columns())
+                    # Set default from general selection if available
+                    if hasattr(self, 'default_y_combo') and self.default_y_combo.currentText():
+                        default_y = self.default_y_combo.currentText()
+                        if default_y in self.parent().data_manager.get_analysis_numeric_columns():
+                            y_column_combo.setCurrentText(default_y)
+                    elif y_column_combo.count() > 1:
+                        y_column_combo.setCurrentIndex(1)
+                    elif y_column_combo.count() > 0:
+                        y_column_combo.setCurrentIndex(0)
+                subplot_layout.addWidget(y_column_combo, 2, 1)
+                
                 # Title
-                subplot_layout.addWidget(QLabel("Title:"), 1, 0)
+                subplot_layout.addWidget(QLabel("Title:"), 3, 0)
                 title_edit = QLineEdit()
                 title_edit.setPlaceholderText(f"Subplot {subplot_num} Title")
-                subplot_layout.addWidget(title_edit, 1, 1)
+                subplot_layout.addWidget(title_edit, 3, 1)
                 
                 # Individual axes settings (enabled only when individual styling is on)
                 axes_group = QGroupBox("Individual Axes Settings")
@@ -2006,8 +2228,8 @@ class PlotCustomizationDialog(QDialog):
                 style_layout.addWidget(bar_width_spin, 5, 1)
                 
                 # Add groups to subplot widget
-                subplot_layout.addWidget(axes_group, 2, 0, 1, 2)
-                subplot_layout.addWidget(style_group, 3, 0, 1, 2)
+                subplot_layout.addWidget(axes_group, 4, 0, 1, 2)
+                subplot_layout.addWidget(style_group, 5, 0, 1, 2)
                 
                 # Initially disable individual settings
                 axes_group.setEnabled(False)
@@ -2019,6 +2241,8 @@ class PlotCustomizationDialog(QDialog):
                     'col': j,
                     'widget': subplot_widget,
                     'plot_type_combo': plot_type_combo,
+                    'x_column_combo': x_column_combo,
+                    'y_column_combo': y_column_combo,
                     'title_edit': title_edit,
                     'xlabel_edit': xlabel_edit,
                     'ylabel_edit': ylabel_edit,
@@ -2040,12 +2264,20 @@ class PlotCustomizationDialog(QDialog):
                 
                 self.subplot_configs.append(config)
                 self.subplot_layout.addWidget(subplot_widget)
+                
+        print(f"DEBUG: Created {len(self.subplot_configs)} subplot configurations")
+        
+        # Trigger the individual styling toggle to enable controls if checkbox is checked
+        if hasattr(self, 'individual_styling_check'):
+            self.toggle_individual_styling(self.individual_styling_check.isChecked())
         
     def toggle_individual_styling(self, enabled):
         """Enable/disable individual subplot styling."""
-        for config in self.subplot_configs:
+        print(f"DEBUG: toggle_individual_styling called with enabled={enabled}")
+        for i, config in enumerate(self.subplot_configs):
             config['axes_group'].setEnabled(enabled)
             config['style_group'].setEnabled(enabled)
+            print(f"DEBUG: Subplot {i} axes_group enabled: {config['axes_group'].isEnabled()}")
         
     def create_colors_tab(self):
         """Create colors and styling customization tab."""
@@ -2365,13 +2597,33 @@ class PlotCustomizationDialog(QDialog):
         
         # Add multi-plot settings if applicable
         if self.plot_type == "multi":
+            # Get subplot configurations
+            subplot_configs_data = []
+            individual_styling_enabled = self.individual_styling_check.isChecked() if hasattr(self, 'individual_styling_check') else False
+            
+            if hasattr(self, 'subplot_configs'):
+                for config in self.subplot_configs:
+                    subplot_data = {
+                        'plot_type': config['plot_type_combo'].currentText(),
+                        'x_column': config['x_column_combo'].currentText(),
+                        'y_column': config['y_column_combo'].currentText(),
+                        'title': config['title_edit'].text(),
+                        'xlim_min': config['xlim_min'].value(),
+                        'xlim_max': config['xlim_max'].value(),
+                        'ylim_min': config['ylim_min'].value(),
+                        'ylim_max': config['ylim_max'].value(),
+                        'individual_styling_enabled': individual_styling_enabled,
+                        'axes_enabled': config['axes_group'].isEnabled()
+                    }
+                    subplot_configs_data.append(subplot_data)
+            
             settings['multi_settings'] = {
                 'grid_rows': self.grid_rows_dialog.value() if hasattr(self, 'grid_rows_dialog') else 2,
                 'grid_cols': self.grid_cols_dialog.value() if hasattr(self, 'grid_cols_dialog') else 2,
                 'hspace': self.hspace_spin.value() if hasattr(self, 'hspace_spin') else 0.3,
                 'wspace': self.wspace_spin.value() if hasattr(self, 'wspace_spin') else 0.3,
-                'individual_styling': self.individual_styling_check.isChecked() if hasattr(self, 'individual_styling_check') else False,
-                'subplot_settings': getattr(self, 'subplot_settings', [])  # Will be populated by the dialog
+                'individual_styling': individual_styling_enabled,
+                'subplot_configs': subplot_configs_data  # Include actual subplot configurations
             }
         
         # Add enhanced axes settings

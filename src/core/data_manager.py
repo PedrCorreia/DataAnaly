@@ -110,6 +110,19 @@ class DataManager:
             return list(self.data.select_dtypes(include=[np.number]).columns)
         return []
         
+    def get_analysis_columns(self) -> List[str]:
+        """Get list of column names excluding sample_id for analysis."""
+        if self.data is not None:
+            return [col for col in self.data.columns if col != 'sample_id']
+        return []
+        
+    def get_analysis_numeric_columns(self) -> List[str]:
+        """Get list of numeric column names excluding sample_id for analysis."""
+        if self.data is not None:
+            numeric_cols = self.data.select_dtypes(include=[np.number]).columns
+            return [col for col in numeric_cols if col != 'sample_id']
+        return []
+        
     def get_categorical_columns(self) -> List[str]:
         """Get list of categorical/text column names."""
         if self.data is not None:
